@@ -40,17 +40,18 @@ if uploaded_file:
     reader = PdfReader(uploaded_file)
     pages = [p.extract_text() or "" for p in reader.pages]
 
-    chunks = []
-    for i, p in enumerate(pages):
-        for part in p.split("\n\n"):
+chunks = []
+for i, p in enumerate(pages):
+    for part in p.split("\n\n"):
             if len(part) > 200:
                 chunks.append(f"(Sayfa {i+1}) {part}")
 
-    index = build_index(chunks)
+index = build_index(chunks)
 
-    if index is None:
+if index is None:
     st.error("PDF içinden okunabilir metin çıkarılamadı (tarama PDF olabilir).")
     st.stop()
+
 
 
     question = st.chat_input("PDF hakkında sor")
