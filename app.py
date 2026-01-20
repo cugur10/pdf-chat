@@ -21,6 +21,9 @@ uploaded_file = st.file_uploader("PDF yükle", type="pdf")
 
 @st.cache_resource
 def build_index(text_chunks):
+    if len(text_chunks) == 0:
+        return None
+
     embeddings = []
     for chunk in text_chunks:
         emb = openai.embeddings.create(
@@ -28,10 +31,12 @@ def build_index(text_chunks):
             input=chunk
         ).data[0].embedding
         embeddings.append(emb)
+
     dim = len(embeddings[0])
     index = faiss.IndexFlatL2(dim)
     index.add(np.array(embeddings).astype("float32"))
     return index
+
 
 if uploaded_file:
     reader = PdfReader(uploaded_file)
@@ -44,6 +49,11 @@ if uploaded_file:
                 chunks.append(f"(Sayfa {i+1}) {part}")
 
     index = build_index(chunks)
+
+    if index is None:
+    st.error("PDF içinden okunabilir metin çıkarılamadı (tarama PDF olabilir).")
+    st.stop()
+
 
     question = st.chat_input("PDF hakkında sor")
 
