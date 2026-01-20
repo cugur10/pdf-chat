@@ -1,4 +1,4 @@
-raise Exception("DOGRU APP.PY CALISIYOR")
+
 
 import streamlit as st
 from pypdf import PdfReader
