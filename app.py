@@ -10,7 +10,8 @@ Yalnızca yüklenen PDF içeriğine dayanarak cevap ver.
 PDF dışında bilgi uydurma.
 """
 
-openai.api_key = st.secrets["OPENAI_API_KEY"]
+import os
+openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 st.title("PDF Denetçi Ajanı")
 
