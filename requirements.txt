@@ -3,3 +3,4 @@ openai
 pypdf
 faiss-cpu
 tiktoken
+pymupdf
