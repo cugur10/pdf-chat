@@ -1,6 +1,6 @@
 import os
 import streamlit as st
-from pypdf import PdfReader
+import fitz  # PyMuPDF
 import openai
 import faiss
 import numpy as np
@@ -37,11 +37,14 @@ uploaded_file = st.file_uploader("PDF yükle", type=["pdf"])
 # FONKSİYONLAR
 # =========================
 def extract_pages(pdf_file):
-    reader = PdfReader(pdf_file)
+    # Streamlit uploaded_file bir BytesIO gibi davranır
+    data = pdf_file.read()
+    doc = fitz.open(stream=data, filetype="pdf")
     texts = []
-    for page in reader.pages:
-        texts.append(page.extract_text() or "")
+    for page in doc:
+        texts.append(page.get_text("text") or "")
     return texts
+
 
 def make_chunks(pages):
     chunks = []
