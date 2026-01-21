@@ -6,6 +6,50 @@ import numpy as np
 import fitz  # PyMuPDF
 import pdfplumber
 from io import BytesIO
+import streamlit as st
+
+st.set_page_config(
+    page_title="İş Paketi Denetçi Ajanı",
+    page_icon="✅",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Üst bant
+st.markdown("""
+<style>
+/* Genel tipografi ve boşluklar */
+.block-container { padding-top: 1.2rem; padding-bottom: 2rem; }
+h1, h2, h3 { letter-spacing: .2px; }
+.small-muted { color: #6b7280; font-size: 0.9rem; }
+
+/* Header bandı */
+.header {
+  padding: 12px 16px;
+  border: 1px solid rgba(120,120,120,.25);
+  border-radius: 10px;
+  background: rgba(240,240,240,.35);
+}
+.kpi {
+  border: 1px solid rgba(120,120,120,.25);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown('<div class="header">', unsafe_allow_html=True)
+colA, colB = st.columns([1, 3], vertical_alignment="center")
+with colA:
+    # Logo dosyanız varsa repo içine koyup buradan gösterin (örn: assets/logo.png)
+    # st.image("assets/logo.png", width=90)
+    st.write("LOGO")
+with colB:
+    st.markdown("## İş Paketi Denetçi Ajanı")
+    st.markdown('<div class="small-muted">Offline Demo / Kurum içi kurallar sabit • Yalnızca yüklenen içerik temel alınır</div>', unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
+
+st.divider()
 
 SYSTEM_PROMPT = """
 Sen bir İŞ PAKETİ DENETÇİ AJANISIN.
