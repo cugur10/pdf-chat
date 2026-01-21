@@ -1,14 +1,14 @@
 import os
-import streamlit as st
-import openai
-import faiss
+from io import BytesIO
 import numpy as np
+import streamlit as st
 import fitz  # PyMuPDF
 import pdfplumber
-from io import BytesIO
+import faiss
+import openai
 
 # =========================
-# SAYFA AYARI (TEK KEZ)
+# PAGE CONFIG (ONLY ONCE)
 # =========================
 st.set_page_config(
     page_title="İş Paketi Denetçi Ajanı",
@@ -18,7 +18,7 @@ st.set_page_config(
 )
 
 # =========================
-# KURUMSAL STİL
+# STYLES
 # =========================
 st.markdown("""
 <style>
@@ -42,51 +42,59 @@ st.markdown("""
   padding: 12px 14px;
   background: rgba(240,240,240,.20);
 }
-hr { margin: 1rem 0; }
 </style>
 """, unsafe_allow_html=True)
 
 # =========================
-# ÜST BANT (TEK BAŞLIK)
+# HEADER (SINGLE TITLE)
 # =========================
 st.markdown('<div class="header">', unsafe_allow_html=True)
-colA, colB, colC = st.columns([1, 3, 1], vertical_alignment="center")
-with colA:
-    # Logo eklemek isterseniz: st.image("assets/logo.png", width=90)
+c1, c2, c3 = st.columns([1, 3, 1], vertical_alignment="center")
+with c1:
+    # st.image("assets/logo.png", width=90)  # optional
     st.markdown("**LOGO**")
-with colB:
+with c2:
     st.markdown("## İş Paketi Denetçi Ajanı")
     st.markdown(
         '<div class="small-muted">Demo • Kurum içi kurallar sabit • Yalnızca yüklenen içerik temel alınır</div>',
         unsafe_allow_html=True
     )
-with colC:
-    st.markdown('<div class="small-muted" style="text-align:right;">Sürüm: v0.2</div>', unsafe_allow_html=True)
+with c3:
+    st.markdown('<div class="small-muted" style="text-align:right;">Sürüm: v1.0</div>', unsafe_allow_html=True)
 st.markdown("</div>", unsafe_allow_html=True)
-
 st.divider()
 
 # =========================
-# SABİT TALİMAT
+# SYSTEM PROMPT (FIXED)
 # =========================
 SYSTEM_PROMPT = """
 Sen bir İŞ PAKETİ DENETÇİ AJANISIN.
 Yalnızca yüklenen PDF içeriğine dayanarak cevap ver.
 PDF dışında bilgi uydurma.
 Bilgi yoksa açıkça belirt.
+Mümkünse yanıtında sayfa referansı belirt.
 """
 
 # =========================
-# OPENAI KEY
+# API KEY (STREAMLIT SECRETS + ENV FALLBACK)
 # =========================
-api_key = os.environ.get("OPENAI_API_KEY")
+api_key = None
+try:
+    api_key = st.secrets.get("OPENAI_API_KEY")
+except Exception:
+    api_key = None
+
 if not api_key:
-    st.error("OPENAI_API_KEY Render > Environment Variables kısmında tanımlı değil.")
+    api_key = os.environ.get("OPENAI_API_KEY")
+
+if not api_key:
+    st.error("OPENAI_API_KEY bulunamadı. Streamlit Cloud > Secrets veya Environment içine ekleyin.")
     st.stop()
+
 openai.api_key = api_key
 
 # =========================
-# SIDEBAR (KURUMSAL)
+# SIDEBAR
 # =========================
 with st.sidebar:
     st.markdown("### Menü")
@@ -95,28 +103,28 @@ with st.sidebar:
     st.markdown("### Politika")
     st.caption("Uygulama yalnızca yüklenen PDF içeriğine dayanır. Harici bilgi üretmez.")
     st.markdown("### Gizlilik")
-    st.caption("Demo ortamında dosyalar kalıcı saklanmamalıdır. Canlı ortamda kurum politikası uygulanır.")
+    st.caption("Demo ortamında içerikler kalıcı saklanmamalıdır. Canlı ortamda kurum politikası uygulanır.")
 
 # =========================
-# ÜST KPI'lar
+# KPI ROW
 # =========================
 k1, k2, k3 = st.columns(3)
 with k1:
     st.markdown('<div class="kpi"><b>1) Belge Yükle</b><br><span class="small-muted">Rapor/İP PDF dosyasını ekleyin.</span></div>', unsafe_allow_html=True)
 with k2:
-    st.markdown('<div class="kpi"><b>2) İçerik Doğrulama</b><br><span class="small-muted">Metin çıkarma ve sayfa kapsaması kontrol edilir.</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="kpi"><b>2) İçerik Doğrulama</b><br><span class="small-muted">Metin çıkarma ve kapsama kontrol edilir.</span></div>', unsafe_allow_html=True)
 with k3:
     st.markdown('<div class="kpi"><b>3) Denetçi Yanıtı</b><br><span class="small-muted">Sorular PDF bağlamından cevaplanır.</span></div>', unsafe_allow_html=True)
 
 st.write("")
 
 # =========================
-# PDF YÜKLEME
+# PDF UPLOAD
 # =========================
 uploaded_file = st.file_uploader("Rapor/PDF yükleyin (İP denetimi)", type=["pdf"])
 
 # =========================
-# PDF METİN ÇIKARMA
+# HELPERS
 # =========================
 def extract_pages_pymupdf(pdf_bytes: bytes) -> list[str]:
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -141,6 +149,21 @@ def make_chunks(pages: list[str]) -> list[str]:
                 chunks.append(f"(Sayfa {i+1}) {part}")
     return chunks
 
+def safe_embedding(text: str) -> list[float]:
+    # Quota/Rate limit gibi hatalarda kullanıcıya düzgün mesaj
+    try:
+        return openai.embeddings.create(
+            model="text-embedding-3-small",
+            input=text
+        ).data[0].embedding
+    except Exception as e:
+        msg = str(e)
+        if "insufficient_quota" in msg or "RateLimitError" in msg or "429" in msg:
+            st.error("OpenAI API kota/billing hatası (429). API anahtarınızda kredi/billing yok veya limit dolmuş.")
+        else:
+            st.error(f"OpenAI API hatası: {e}")
+        st.stop()
+
 @st.cache_resource
 def build_index(chunks: list[str]):
     if not chunks:
@@ -148,40 +171,43 @@ def build_index(chunks: list[str]):
 
     vectors = []
     for c in chunks:
-        emb = openai.embeddings.create(
-            model="text-embedding-3-small",
-            input=c
-        ).data[0].embedding
-        vectors.append(emb)
+        vectors.append(safe_embedding(c))
 
     dim = len(vectors[0])
     index = faiss.IndexFlatL2(dim)
     index.add(np.array(vectors, dtype="float32"))
     return index
 
-def answer_question(index, chunks, question):
-    q_emb = openai.embeddings.create(
-        model="text-embedding-3-small",
-        input=question
-    ).data[0].embedding
+def answer_question(index, chunks, question: str) -> str:
+    q_emb = safe_embedding(question)
 
     D, I = index.search(np.array([q_emb], dtype="float32"), k=min(5, len(chunks)))
-    context = "\n\n".join([chunks[i] for i in I[0]])
+    context = "\n\n".join([chunks[i] for i in I[0] if 0 <= i < len(chunks)])
 
-    resp = openai.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"PDF BAĞLAMI:\n{context}\n\nSORU:\n{question}\n\nKURAL: Yalnızca bu PDF bağlamına dayan."}
-        ]
-    )
-    return resp.choices[0].message.content
+    try:
+        resp = openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": f"PDF BAĞLAMI:\n{context}\n\nSORU:\n{question}\n\nKURAL: Yalnızca bu PDF bağlamına dayan."}
+            ],
+        )
+        return resp.choices[0].message.content
+    except Exception as e:
+        msg = str(e)
+        if "insufficient_quota" in msg or "RateLimitError" in msg or "429" in msg:
+            return "OpenAI API kota/billing hatası (429). API anahtarınızda kredi/billing yok veya limit dolmuş."
+        return f"OpenAI API hatası: {e}"
 
 # =========================
-# AKIŞ
+# FLOW
 # =========================
 if not uploaded_file:
-    st.markdown('<div class="card"><b>Başlamak için</b><br><span class="small-muted">Lütfen bir PDF yükleyin. Yüklendikten sonra metin çıkarma ve soru-cevap aktif olacaktır.</span></div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="card"><b>Başlamak için</b><br>'
+        '<span class="small-muted">Lütfen bir PDF yükleyin. Yüklendikten sonra metin çıkarma ve soru-cevap aktif olacaktır.</span></div>',
+        unsafe_allow_html=True
+    )
     st.stop()
 
 pdf_bytes = uploaded_file.getvalue()
@@ -189,8 +215,8 @@ pdf_bytes = uploaded_file.getvalue()
 with st.spinner("PDF metni çıkarılıyor..."):
     pages = extract_pages_pymupdf(pdf_bytes)
     total_chars = sum(len(x) for x in pages)
-
     method_used = "PyMuPDF"
+
     if total_chars < 200:
         pages2 = extract_pages_pdfplumber(pdf_bytes)
         total_chars2 = sum(len(x) for x in pages2)
@@ -206,17 +232,42 @@ st.markdown(
 )
 
 preview_text = "\n".join(pages).strip()
-if preview_text:
-    with st.expander("Çıkan metin önizleme (ilk 300 karakter)"):
-        st.code(preview_text[:300])
-else:
-    st.error("PDF içinden metin çıkarılamadı. (Metin katmanı yok / özel encoding) OCR gerekebilir.")
+if not preview_text:
+    st.error("PDF içinden metin çıkarılamadı. (Metin katmanı yok / özel encoding). OCR gerekebilir.")
     st.stop()
 
+with st.expander("Çıkan metin önizleme (ilk 300 karakter)"):
+    st.code(preview_text[:300])
+
 chunks = make_chunks(pages)
+if not chunks:
+    st.error("Metin çıkarıldı ama parçalama sonrası kullanılabilir içerik kalmadı. (Çok kısa veya dağınık içerik olabilir.)")
+    st.stop()
 
 with st.spinner("İndeks hazırlanıyor..."):
     index = build_index(chunks)
 
 if index is None:
-    st.error("Metin çıkarıldı ama parçalama sonrası kullanılabilir içerik kalmadı. (
+    st.error("İndeks oluşturulamadı (chunk sayısı 0).")
+    st.stop()
+
+st.success("PDF hazır. Sorunuzu yazabilirsiniz.")
+
+# =========================
+# CHAT
+# =========================
+if "history" not in st.session_state:
+    st.session_state.history = []
+
+question = st.chat_input("PDF hakkında soru sor")
+
+if question:
+    with st.spinner("Cevap hazırlanıyor..."):
+        answer = answer_question(index, chunks, question)
+    st.session_state.history.append((question, answer))
+
+for q, a in st.session_state.history:
+    st.chat_message("user").write(q)
+    st.chat_message("assistant").write(a)
+
+
