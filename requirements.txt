@@ -1,6 +1,6 @@
 streamlit
 openai
-pypdf
 faiss-cpu
-tiktoken
+numpy
 pymupdf
+pdfplumber
